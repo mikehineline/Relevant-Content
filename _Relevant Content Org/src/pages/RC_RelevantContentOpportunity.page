@@ -1,0 +1,151 @@
+<!--
+    RC_RelevantContentOpportunity.page - Main Visualforce page for Relevant Content package
+        Provides a list of content relative to keywords in an opportunity on the Opportunity page layout
+    Author: Mike Hineline
+
+    Copyright (c) 2013, salesforce.com, Inc.
+    All rights reserved.
+    
+    Redistribution and use in source and binary forms, with or without modification, 
+    are permitted provided that the following conditions are met:
+    
+        * Redistributions of source code must retain the above copyright notice, 
+        this list of conditions and the following disclaimer.
+        * Redistributions in binary form must reproduce the above copyright notice, 
+        this list of conditions and the following disclaimer in the documentation 
+        and/or other materials provided with the distribution.
+        * Neither the name of the salesforce.com, Inc. nor the names of its contributors 
+        may be used to endorse or promote products derived from this software 
+        without specific prior written permission.
+    
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+    ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
+    IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+    INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+    BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
+    LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE 
+    OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED 
+    OF THE POSSIBILITY OF SUCH DAMAGE.
+-->
+<apex:page standardController="Opportunity" extensions="RC_OpportunityContentSearchExtension" sidebar="false" showHeader="false" standardStylesheets="false" docType="html-5.0">
+    <!-- Bootstrap core CSS -->
+    <apex:stylesheet value="{!URLFOR($Resource.RC_RelevantContentResources,'css/bootstrap.min.css')}" />
+    <!-- Salesforce console integration JavaScript -->
+    <apex:includeScript value="/support/console/30.0/integration.js"/> 
+    <!-- Custom styles for this page -->
+    <apex:stylesheet value="{!URLFOR($Resource.RC_RelevantContentResources,'css/relevantContent.css')}" />
+    <!-- Custom JavaScript for this page -->
+    <script type="text/javascript">
+        /* 
+            RC_getPageFormat - get the pageFormat string based on the user's UI
+                NOTE: this JavaScript function is included in the VF page file due to
+                the inline Visualforce merge field
+            Inputs: none
+            Output: String pageFormat = console, mobile, or aloha
+        */
+        function RC_getPageFormat() {
+            // Detect the page format
+            var pageisdtp = "{!JSENCODE($CurrentPage.parameters.isdtp)}";
+            var pageFormat = "aloha";
+            if (pageisdtp == 'nv' || pageisdtp == 'vw') {
+                // Detect the console
+                pageFormat = "console";
+            } else if ( pageisdtp == 'p1' ) {
+                // Detect Salesforce1
+                pageFormat = "mobile";
+            } else {
+                // Default to aloha
+                pageFormat = "aloha";
+            }
+            
+            // Return the page format
+            return pageFormat;
+        } 
+    </script>
+
+    <apex:form id="contentSearch">
+	    <div class="container rcContainer">
+            <!-- Ensure the RC_Keywords__c field is included in the controller extension opportunity object -->
+            <apex:outputText value="{!Opportunity.RC_Keywords__c}" rendered="false" />
+        
+            <!-- Page Title only shown in Salesforce1 -->
+            <script type="text/javascript">
+            	if (RC_getPageFormat() == "mobile") {
+            		document.write("<div class='pageHeader pageHeader-smallHidden'>Relevant Content</div>");
+            	}
+            </script>
+
+            <!-- Search functions -->
+            <apex:actionFunction name="searchFunction" action="{!updateSearch}" reRender="contentListPanel">
+                <apex:param name="srchStrng" value="" assignTo="{!opportunitySearchString}" />
+            </apex:actionFunction>
+            <div class="row">
+                <div class="col-sm-12">
+                    <div class="input-group">
+                        <span class="input-group-btn">
+                            <a href="javascript:void(0);" onClick="$( '#opportunitySearchElement' ).val('{!JSENCODE(Opportunity.RC_Keywords__c)}'); searchFunction($( '#opportunitySearchElement' ).val()); return false;" title="Reset search">
+                                <button type="button" class="btn btn-default btn-sm" id="pageRefreshButton"><img src="{!URLFOR($Resource.RC_RelevantContentResources,'images/back_button.png')}" /></button>
+                            </a>
+                        </span>
+                        <input type="search" class="form-control " value="{!opportunitySearchString}" id="opportunitySearchElement"/>
+                        <span class="input-group-btn">
+                            <a href="javascript:void(0);" onClick="searchFunction($( '#opportunitySearchElement' ).val()); return false;" title="Search">
+                                <button type="submit" class="btn btn-default btn-sm" id="pageRefreshButton"><img src="{!URLFOR($Resource.RC_RelevantContentResources,'images/search_button.png')}" /></button>
+                            </a>
+                        </span>
+                    </div>
+                </div>
+        	</div>
+            <!-- /Search functions -->
+
+            <!-- Results panel -->
+            <apex:outputPanel id="contentListPanel">
+            <div class="list-group">
+                <apex:repeat value="{!opportunityContentPage}" var="thisContent" id="contentList">
+                    <a href="javascript:void(0);" onClick="javascript:RC_openRecord('{!JSENCODE(thisContent.contentVersionSObject.ContentDocumentId)}','sub','{!JSENCODE(thisContent.contentVersionSObject.Title)}','view','{!JSENCODE(contentType)}'); return false;" class="list-group-item">
+                        <strong>{!thisContent.contentVersionSObject.Title}</strong><br />
+                        <span class="fileDetails">
+                        	{!thisContent.contentModifiedDateFormatted}
+                        	&bull;
+                        	{!IF(ROUND(thisContent.contentVersionSObject.ContentSize / 1024,0) <= 1000,
+                        		ROUND(thisContent.contentVersionSObject.ContentSize / 1024,0),
+                        		ROUND(thisContent.contentVersionSObject.ContentSize / (1024*1024),1)
+                        	)}
+                        	{!IF(ROUND(thisContent.contentVersionSObject.ContentSize / 1024,0) <= 1000,'KB','MB')}
+                        	&bull;
+                        	{!thisContent.fileTypeFormatted}
+                        	<br />
+                        	<apex:outputText value="{!thisContent.contentVersionSObject.Description}" rendered="{!thisContent.contentVersionSObject.Description != null}" />
+				            <!-- Ensure the TagCsv field is included in the controller extension opportunity object -->
+                        	<apex:outputText value="{!thisContent.contentVersionSObject.TagCsv}" rendered="false" />
+                    	</span>
+                    </a>
+                </apex:repeat>
+            </div>
+            <!-- Pagination -->
+            <apex:actionFunction name="paginateFunction" action="{!changePage}" reRender="contentListPanel">
+                <apex:param name="srchStrng" value="" assignTo="{!currentPage}" />
+            </apex:actionFunction>
+            <ul class="pagination pagination-sm">
+                <li class="{!IF((currentPage == 1),'disabled','')}"><a href="javascript:void(0);" onClick="paginateFunction({!currentPage - 1}); return false;">&laquo;</a></li>    <apex:repeat value="{!resultPages}" var="pageNum" id="pagination">
+                <li class="{!IF((currentPage == pageNum),'active','')}"><a href="javascript:void(0);" onClick="paginateFunction({!pageNum}); return false;">{!pageNum}</a></li>
+                </apex:repeat>
+                <li class="{!IF((currentPage == numPages),'disabled','')}"><a href="javascript:void(0);" onClick="paginateFunction({!currentPage + 1}); return false;">&raquo;</a></li> 
+            </ul>
+            <!-- /Pagination -->
+            </apex:outputPanel>
+            <!-- /Results panel -->
+
+	    </div> <!-- /container -->
+    </apex:form>
+                
+    <!-- ========================================================================================
+        JavaScript Includes - placed at the end of the document so the pages load faster -->
+    <!--  Bootstrap core JavaScript  -->
+    <apex:includeScript value="{!URLFOR($Resource.RC_RelevantContentResources,'js/jquery-1.11.0.min.js')}"/> 
+    <apex:includeScript value="{!URLFOR($Resource.RC_RelevantContentResources,'js/bootstrap.min.js')}"/> 
+    <!-- Custom JavaScript for this page -->
+    <apex:includeScript value="{!URLFOR($Resource.RC_RelevantContentResources,'js/relevantContent.js')}"/> 
+</apex:page>
