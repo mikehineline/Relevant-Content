@@ -311,10 +311,12 @@ public with sharing class RC_OpportunityContentSearchExtension {
 			or lower case version of inputFileTypeString for unrecognized extensions
 	*/
     public static String cleanFileType(String inputFileTypeString, String inputFilename) {
-    	// Initialize the string to manipulate & output
+    	// Initialize the file type string to manipulate & output
     	//	By default, if a match of FileType or file extension is not made,
     	//	the lower case version of the FileType will be returned
 		String outputFileTypeString = inputFileTypeString.toLowerCase();
+		// Convert the inputFilename string to lower case
+		inputFilename = inputFilename.toLowerCase();
 		
 		// Set the input/output file type string mappings
 		//	Identical FileType to known file extensions (e.g. bmp => bmp) are not explicitly mapped
