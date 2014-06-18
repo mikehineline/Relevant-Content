@@ -144,6 +144,8 @@ private class RC_OpportunityContentSearchExt_test {
         // Set Visualforce page
         PageReference page = new PageReference('RC_RelevantContentOpportunity');
         Test.setCurrentPage(page); 
+		// Ensure CONTENT_ONLY is set to false for tests
+		RC_OpportunityContentSearchExtension.CONTENT_ONLY = false;
         // Set the standard controller and extension
         ApexPages.StandardController controller = new ApexPages.StandardController(testOpportunity);
 		RC_OpportunityContentSearchExtension controllerExtension = new RC_OpportunityContentSearchExtension(controller);
@@ -152,24 +154,37 @@ private class RC_OpportunityContentSearchExt_test {
         System.assertEquals(NUM_TEST_CONTENT_1,controllerExtension.opportunityContentAll.size());
         System.assertEquals(NUM_TEST_CONTENT_1,controllerExtension.totalResults); 
         System.assertEquals(1,controllerExtension.currentPage); 
-        // Test that opportunityContentPage only contains <= resultsPerPage
-        System.assert(controllerExtension.opportunityContentPage.size() <= controllerExtension.resultsPerPage);
-        // Test the number of pages = ceil(NUM_TEST_CONTENT_1 / resultsPerPage)
-        Integer testNumPages = (Integer)Math.ceil((Decimal)controllerExtension.totalResults / (Decimal)controllerExtension.resultsPerPage);
+        // Test that opportunityContentPage only contains <= RESULTS_PER_PAGE
+        System.assert(controllerExtension.opportunityContentPage.size() <= controllerExtension.RESULTS_PER_PAGE);
+        // Test the number of pages = ceil(NUM_TEST_CONTENT_1 / RESULTS_PER_PAGE)
+        Integer testNumPages = (Integer)Math.ceil((Decimal)controllerExtension.totalResults / (Decimal)controllerExtension.RESULTS_PER_PAGE);
         System.assertEquals(testNumPages,controllerExtension.numPages);
 
         /*
-        	Test the cleanFileType method
+        	Test the cleanFileType and getIconFilename methods
         	Send in known and unknown values and test results
         */
-        // Test that cleanFileType handled a known value correctly
+        // Test that cleanFileType and getIconFilename handled a known value correctly
         String fileTypeTest = 'EXCEL_X';
-        String fileTypeTestOutput = RC_OpportunityContentSearchExtension.cleanFileType(fileTypeTest);
+        String fileNameTest = 'test.xlsx';
+        String fileTypeTestOutput = RC_OpportunityContentSearchExtension.cleanFileType(fileTypeTest,fileNameTest);
         System.assertEquals('xlsx',fileTypeTestOutput);
-        // Test that cleanFileType handled an unknown value correctly
+        String filenameTestOutput = RC_OpportunityContentSearchExtension.getIconFilename(fileTypeTestOutput);
+        System.assertEquals('excel.svg',filenameTestOutput);
+        // Test that cleanFileType and getIconFilename handled an unknown value with no file extension correctly
         fileTypeTest = 'UNKNOWN_FILE_TYPE_STRING_TEST';
-        fileTypeTestOutput = RC_OpportunityContentSearchExtension.cleanFileType(fileTypeTest);
+        fileNameTest = 'unknownfile';
+        fileTypeTestOutput = RC_OpportunityContentSearchExtension.cleanFileType(fileTypeTest,fileNameTest);
         System.assertEquals('unknown_file_type_string_test',fileTypeTestOutput);
+        filenameTestOutput = RC_OpportunityContentSearchExtension.getIconFilename(fileTypeTestOutput);
+        System.assertEquals('unknown.svg',filenameTestOutput);
+        // Test that cleanFileType and getIconFilename handled an unknown value with a file extension correctly
+        fileTypeTest = 'UNKNOWN_FILE_TYPE_STRING_TEST';
+        fileNameTest = 'unknownfile.wmv';
+        fileTypeTestOutput = RC_OpportunityContentSearchExtension.cleanFileType(fileTypeTest,fileNameTest);
+        System.assertEquals('wmv',fileTypeTestOutput);
+        filenameTestOutput = RC_OpportunityContentSearchExtension.getIconFilename(fileTypeTestOutput);
+        System.assertEquals('video.svg',filenameTestOutput);
         
         /*
         	Test the changePage method
@@ -193,7 +208,7 @@ private class RC_OpportunityContentSearchExt_test {
 	        System.assertNotEquals(opportunityContentPage1Id, controllerExtension.opportunityContentPage[0].contentVersionSObject.Id);
         } else {
         	// Test that we're still on the 1st page if there is only 1 page of results
-        	// This can happen if resultsPerPage in the controller extension is set to 
+        	// This can happen if RESULTS_PER_PAGE in the controller extension is set to 
 			//	greater than NUM_TEST_CONTENT_1 above
 	        System.assertEquals(1,controllerExtension.currentPage); 
         }
@@ -230,8 +245,15 @@ private class RC_OpportunityContentSearchExt_test {
 			controllerExtension = new RC_OpportunityContentSearchExtension(controller);
 			// Ensure contentAvailable is set to false for the user
 			System.assertequals(false,controllerExtension.contentAvailable);
-			// Ensure contentType is set to 'Files' for the user
-			System.assertequals('File',controllerExtension.contentType);
+			// Ensure contentType is set correctly for the user
+			if (RC_OpportunityContentSearchExtension.CONTENT_ONLY == false) {
+				// Ensure content Type is set to 'Files' for the user
+				System.assertequals('File',controllerExtension.contentType);
+			} else {
+				// No results can be returned with CONTENT_ONLY = true and no access to Content
+				// Ensure MAX_RESULTS = 0
+				System.assertequals(0,controllerExtension.MAX_RESULTS); 	
+			}
         }
 
         // Set up positive test user with access to CRM Content
@@ -249,7 +271,7 @@ private class RC_OpportunityContentSearchExt_test {
 				controllerExtension = new RC_OpportunityContentSearchExtension(controller);
 				// Ensure contentAvailable is set to false for the user
 				System.assertequals(true,controllerExtension.contentAvailable);
-				// Ensure contentType is set to 'Files' for the user
+				// Ensure contentType is set to 'Content' for the user
 				System.assertequals('Content',controllerExtension.contentType);
 			}
         }

@@ -30,12 +30,15 @@
     OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 public with sharing class RC_OpportunityContentSearchExtension {
+	// Preference flag to return only Content (true) or Content and Files (false)
+	public static Boolean CONTENT_ONLY = false;
+
 	// Member variable to hold current account object
 	private final Opportunity thisOpportunity;
 	// Member variable for the start position of the search, used for pagination
-	public Integer maxResults {get; set;}
+	public Integer MAX_RESULTS {get; private set;}
 	// Member variable for the number of search results displayed per page
-	public Integer resultsPerPage {get; set;}
+	public Integer RESULTS_PER_PAGE {get; private set;}
 	// Member variable for the number of total pages of results in the total list
 	public Integer numPages {get; private set;}
 	// Member variable for the current page that is being viewed
@@ -63,13 +66,20 @@ public with sharing class RC_OpportunityContentSearchExtension {
     public RC_OpportunityContentSearchExtension(ApexPages.StandardController controller) {
     	// Set the current Opportunity object from the standard controller
         this.thisOpportunity = (Opportunity)controller.getRecord();
+
+        /*
+        	Set preference variables
+        */
         // Default maximum number of results queried to 100
-        maxResults = 100;
+        MAX_RESULTS = 100;
         // Default number of results returned per page
-        // Note: if you increase this to >20, you'll need to update the test code coverage
-        // 	RC_OpportunityContentSearchExt_test.RC_OpportunityContentSearchExtensionTestMethod 
-        //	Set NUM_TEST_CONTENT_1 > than this resultsPerPage value
-        resultsPerPage = 10;
+        RESULTS_PER_PAGE = 10;
+        // Return Content and Files (false) as opposed to only Content (true)
+//        CONTENT_ONLY = true;
+
+		/*
+			Initialize variables
+		*/
         // Default number of pages of results to 1
         numPages = 1;
         // Initialize the page list with page number 1
@@ -96,7 +106,7 @@ public with sharing class RC_OpportunityContentSearchExtension {
     }
     
     /*
-		ContentVersionContainer - class for storing Task sObject & related information
+		ContentVersionContainer - wrapper class for storing Task sObject & related information
 	*/
     public class ContentVersionContainer {
     	// Getter/Setter for the contained Task sObject
@@ -105,6 +115,8 @@ public with sharing class RC_OpportunityContentSearchExtension {
         public String contentModifiedDateFormatted {get; private set;}
         // Member variable for the formatted file type string
         public String fileTypeFormatted {get; private set;}
+        // Member variable for the file icon filename
+        public String iconFilename {get; private set;}
 
         // Overloaded constructor to initialize formatted strings when given a ContentVersion input
         public ContentVersionContainer(ContentVersion c) {
@@ -119,7 +131,13 @@ public with sharing class RC_OpportunityContentSearchExtension {
             // Format the FileType string
             fileTypeFormatted = '';
             if (c.FileType != null) {
-            	fileTypeFormatted = cleanFileType(c.FileType);
+            	fileTypeFormatted = cleanFileType(c.FileType,c.PathOnClient);
+            }
+            
+            // Determine the icon filename
+            iconFilename = 'unknown.svg';
+            if (fileTypeFormatted != null) {
+            	iconFilename = getIconFilename(fileTypeFormatted);
             }
         }
     }
@@ -167,12 +185,24 @@ public with sharing class RC_OpportunityContentSearchExtension {
 		/*
 			Perform the SOSL (case insensitive) search on ContentVersion for the keywordSearchString
 				Require a minimum of 3 characters to search
-				Maximum query size = this.maxResults
+				Maximum query size = this.MAX_RESULTS
 		*/
-		// If Content is not available, limit the search to only non-Content (Files)
+		// Limit the query string based on the availabilty of Content and CONTENT_ONLY setting
+		//	Note that if CONTENT_ONLY = true but Content is not available for the user, nothing will be returned
 		String queryLimitString = '';
 		if (contentAvailable == false) {
-			queryLimitString = ' AND Origin<>\'C\'';
+			if (CONTENT_ONLY == false) {
+				// Content is not available and CONTENT_ONLY not set
+				//	Limit the search to only non-Content (Files)
+				queryLimitString = ' AND Origin<>\'C\'';
+			} else {
+				// Content is not available but CONTENT_ONLY is set
+				//	Return no results
+				this.MAX_RESULTS = 0;
+			}
+		} else if (CONTENT_ONLY == true) {
+			// CONTENT_ONLY is set, return only Content (Origin=C)
+			queryLimitString = ' AND Origin=\'C\'';
 		}
 		
 		// Clear the existing lists
@@ -183,11 +213,11 @@ public with sharing class RC_OpportunityContentSearchExtension {
        	List<ContentVersion> returnContent = new List<ContentVersion>();
 		if (keywordSearchString.length() > 2) {
 			String contentQueryString = 'FIND :keywordSearchString IN ALL FIELDS';
-			contentQueryString += ' RETURNING ContentVersion (Id, Title, FileType, Description, TagCsv, ContentSize, ContentDocumentId, ContentModifiedDate, IsDeleted';
+			contentQueryString += ' RETURNING ContentVersion (Id, Title, FileType, PathOnClient, ContentSize, ContentDocumentId, ContentModifiedDate';
 			contentQueryString += ' WHERE IsLatest = TRUE AND IsDeleted = FALSE';
 	        contentQueryString += queryLimitString;
 	        contentQueryString += ')';
-	        contentQueryString += ' LIMIT ' + this.maxResults;
+	        contentQueryString += ' LIMIT ' + this.MAX_RESULTS;
 	        List<List<ContentVersion>> rawContentList = search.query(contentQueryString);
 
 		    // Add any non-deleted content to the full result list and current page list member variables
@@ -198,7 +228,7 @@ public with sharing class RC_OpportunityContentSearchExtension {
         		this.opportunityContentAll.add( new ContentVersionContainer(c) );
 		    	//  Add the content for the current page list
 		    	//		A new search always starts at the beginning of the results (i=0)
-				if (i < this.resultsPerPage) {
+				if (i < this.RESULTS_PER_PAGE) {
 	        		this.opportunityContentPage.add( new ContentVersionContainer(c) );
 				}
 	       		i++;
@@ -206,8 +236,8 @@ public with sharing class RC_OpportunityContentSearchExtension {
 	    	// Set them member variable for the total number of results
 	    	this.totalResults = this.opportunityContentAll.size();
 	    	// Set the total number of pages of content
-	    	if (this.resultsPerPage > 0) {
-		    	this.numPages = (Integer)Math.ceil((Decimal)this.totalResults / (Decimal)this.resultsPerPage);
+	    	if (this.RESULTS_PER_PAGE > 0) {
+		    	this.numPages = (Integer)Math.ceil((Decimal)this.totalResults / (Decimal)this.RESULTS_PER_PAGE);
 	    	} else {
 	    		this.numPages = 1;
 	    	}
@@ -253,8 +283,8 @@ public with sharing class RC_OpportunityContentSearchExtension {
     	}
 
     	// Determine the start and end position based on this.currentPage, which was set by the Visualforce page
-    	Integer startPos = (this.currentPage - 1) * this.resultsPerPage;
-    	Integer endPos = startPos + this.resultsPerPage;
+    	Integer startPos = (this.currentPage - 1) * this.RESULTS_PER_PAGE;
+    	Integer endPos = startPos + this.RESULTS_PER_PAGE;
     	
 		// Replace this.OpportunityContentPage with the results from this.opportunityContentAll
 		//		for the requested section of results
@@ -275,29 +305,88 @@ public with sharing class RC_OpportunityContentSearchExtension {
 		cleanFileType - method to return a 3-4 character filetype for a known input ContentVersion.FileType string
 		Inputs:
 		- String inputFileTypeString - input string in format used by ContentVersion.FileType
+		- String inputFilename - input string in format used by ContentVersion.PathOnClient
 		Returns: 
-		- String outputFileTypeString - 3-4 character string for recognized extensions
-			or original input string for unrecognized extensions
+		- String outputFileTypeString - 3-4 character string for recognized file types
+			or lower case version of inputFileTypeString for unrecognized extensions
 	*/
-    public static String cleanFileType(String inputFileTypeString) {
+    public static String cleanFileType(String inputFileTypeString, String inputFilename) {
     	// Initialize the string to manipulate & output
+    	//	By default, if a match of FileType or file extension is not made,
+    	//	the lower case version of the FileType will be returned
 		String outputFileTypeString = inputFileTypeString.toLowerCase();
 		
 		// Set the input/output file type string mappings
+		//	Identical FileType to known file extensions (e.g. bmp => bmp) are not explicitly mapped
+		//	since the output file type string will be passed through from the input file type string
 		Map<String, String> knownFileTypes = new Map<String, String> {
+			'jpeg' => 'jpg',
 			'power_point' => 'ppt', 'power_point_m' => 'pptm', 'power_point_t' => 'potx', 'power_point_x' => 'pptx',
 			'excel' => 'xls', 'excel_m' => 'xlsm', 'excel_t' => 'xltx', 'excel_x' => 'xlsx',
-			'jpeg' => 'jpg', 'word' => 'doc', 'word_m' => 'docm', 'word_t' => 'dotx', 'word_x' => 'docx',
-			'rfc822' => 'msg', 'text' => 'txt', 'visio' => 'vsd', 'flash' => 'swf'
+			'word' => 'doc', 'word_m' => 'docm', 'word_t' => 'dotx', 'word_x' => 'docx',
+			'text' => 'txt', 'rfc822' => 'msg',
+			'visio' => 'vsd',
+			'flash' => 'swf'
 		};
 	
 		// Attempt to match the input file type string to a known value
+		//	If there isn't a known value, attempt to use a file extension
 		String knownFileTypeString = knownFileTypes.get(outputFileTypeString);
 		if (knownFileTypeString != null) {
 			outputFileTypeString = knownFileTypeString;
+		} else {
+			// Unknown FileType, use file extension if present
+			if (inputFilename <> '' && inputFilename <> null) {
+				if (inputFilename.indexOf('.') != -1) {
+					outputFileTypeString = inputFilename.substring(inputFilename.indexOf('.') + 1);
+				}
+			}
 		}
 
 		return outputFileTypeString;
+    }
+
+   	/*
+		getIconFilename - method to return the file name for a file type icon given a file type
+			that has been cleaned by cleanFileType()
+		Inputs:
+		- String inputFileTypeString - input string in format used by ContentVersion.FileType
+		Returns: 
+		- String iconFilename - name of the icon file
+	*/
+    public static String getIconFilename(String inputFileTypeString) {
+		// Set the fileType to icon file base name string mappings
+		Map<String, String> knownFileTypes = new Map<String, String> {
+			'pdf' => 'pdf',
+			'jpg' => 'image', 'jpeg' => 'image', 'bmp' => 'image', 'gif' => 'image', 'png' => 'image',
+			'pack' => 'pack',
+			'ppt' => 'ppt', 'pptm' => 'ppt', 'potx' => 'ppt', 'pptx' => 'ppt', 'ppsx' => 'ppt',
+			'xls' => 'excel', 'xlsm' => 'excel', 'xltx' => 'excel', 'xlsx' => 'excel',
+			'csv' => 'csv',
+			'doc' => 'word', 'docm' => 'word', 'dotx' => 'word', 'docx' => 'word',
+			'rtf' => 'rtf', 'txt' => 'txt',
+			'vsd' => 'visio',
+			'swf' => 'flash', 'fla' => 'flash',
+			'google_document' => 'gdoc', 'google_spreadsheet' => 'gsheet', 'google_presentation' => 'gpres',
+			'link' => 'link', 'htm' => 'html', 'html' => 'html', 'xml' => 'xml',
+			'ai' => 'illustrator', 'psd' => 'psd', 'eps' => 'eps',
+			'exe' => 'exe', 'zip' => 'zip',
+			'keynote' => 'keynote', 'key' => 'keynote',
+			'mp4' => 'mp4', 'm4v' => 'video', 'wmv' => 'video', 'arf' => 'webex', 'wrf' => 'webex',
+			'mp3' => 'audio', 'wav' => 'audio',
+			'msg' => 'unknown'
+		};
+	
+		// Attempt to match the input file type string to a known value
+		String knownIconFileBase = knownFileTypes.get(inputFileTypeString);
+		String iconFilename;
+		if (knownIconFileBase != null) {
+			iconFilename = knownIconFileBase + '.svg';
+		} else {
+			iconFilename = 'unknown.svg';
+		}
+
+		return iconFilename;
     }
     
    	/*

@@ -105,22 +105,26 @@
             <div class="list-group">
                 <apex:repeat value="{!opportunityContentPage}" var="thisContent" id="contentList">
                     <a href="javascript:void(0);" onClick="javascript:RC_openRecord('{!JSENCODE(thisContent.contentVersionSObject.ContentDocumentId)}','sub','{!JSENCODE(thisContent.contentVersionSObject.Title)}','view','{!JSENCODE(contentType)}'); return false;" class="list-group-item">
-                        <strong>{!thisContent.contentVersionSObject.Title}</strong><br />
-                        <span class="fileDetails">
-                        	{!thisContent.contentModifiedDateFormatted}
-                        	&bull;
-                        	{!IF(ROUND(thisContent.contentVersionSObject.ContentSize / 1024,0) <= 1000,
-                        		ROUND(thisContent.contentVersionSObject.ContentSize / 1024,0),
-                        		ROUND(thisContent.contentVersionSObject.ContentSize / (1024*1024),1)
-                        	)}
-                        	{!IF(ROUND(thisContent.contentVersionSObject.ContentSize / 1024,0) <= 1000,'KB','MB')}
-                        	&bull;
-                        	{!thisContent.fileTypeFormatted}
-                        	<br />
-                        	<apex:outputText value="{!thisContent.contentVersionSObject.Description}" rendered="{!thisContent.contentVersionSObject.Description != null}" />
-				            <!-- Ensure the TagCsv field is included in the controller extension opportunity object -->
-                        	<apex:outputText value="{!thisContent.contentVersionSObject.TagCsv}" rendered="false" />
-                    	</span>
+                    	<div class="row">
+                    		<div class="col-xs-2 noHPadding text-center">
+		                    	<img class="fileIcon" src="{!URLFOR($Resource.RC_RelevantContentResources,'images/doctype/'+JSENCODE(thisContent.iconFilename))}" />
+							</div>
+                    		<div class="col-xs-10 noLPadding">
+								<strong>{!thisContent.contentVersionSObject.Title}</strong><br />
+		                        <span class="fileDetails">
+    		                    	{!thisContent.contentModifiedDateFormatted}
+        		                	&bull;
+            		            	{!IF(ROUND(thisContent.contentVersionSObject.ContentSize / 1024,0) <= 1000,
+                		        		ROUND(thisContent.contentVersionSObject.ContentSize / 1024,0),
+                    		    		ROUND(thisContent.contentVersionSObject.ContentSize / (1024*1024),1)
+                        			)}
+                        			{!IF(ROUND(thisContent.contentVersionSObject.ContentSize / 1024,0) <= 1000,'KB','MB')}
+                        			&bull;
+                        			{!thisContent.fileTypeFormatted}
+                        			<br />
+	                    		</span>
+    	                	</div>
+   	                	</div>
                     </a>
                 </apex:repeat>
             </div>
