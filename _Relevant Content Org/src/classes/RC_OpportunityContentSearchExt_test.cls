@@ -50,7 +50,7 @@ private class RC_OpportunityContentSearchExt_test {
 
 		// Set the appropriate Content type (Content or File)
 		String contentOrigin = 'C';
-		Boolean contentAvailableContentTest = contentAvailableCheckOrg();
+		Boolean contentAvailableContentTest = RC_OpportunityContentSearchExtension.contentAvailableCheck();
 		if (contentType == 'C' && contentAvailableContentTest == true) {
 			// Content is requested and available, set origin to 'C' (Content)
 			contentOrigin = 'C';
@@ -74,32 +74,13 @@ private class RC_OpportunityContentSearchExt_test {
         return newContent;
     }
 
-    // contentAvailableCheckOrg - utility method to test if Content is enabled for the Org
-    // Inputs:
-    //	None
-    // Output:
-    //  Boolean = true if Content is enabled, false if Content is not enabled
-    public static Boolean contentAvailableCheckOrg() {
-		// Determine if Content is enabled in the org by determining if the
-		//	ContentWorkspace object is available
-		Map<String, Schema.SObjectType> gd = Schema.getGlobalDescribe();
-		Schema.SobjectType findContentWorkspace = gd.get('ContentWorkspace');
-		if (findContentWorkspace != null) {
-			// Content is enabled, return true
-			return true;
-		} else {
-			// Content is not enabled, return false
-			return false;
-		}
-    }
-    
     // Test the myTaskList page and controller
     static testMethod void RC_OpportunityContentSearchExtensionTestMethod() {
     	/*
     		Determine if content is available for the org
     			Will determine if Content or Files is used for tests
     	*/
-    	Boolean contentAvailableTest = contentAvailableCheckOrg();
+    	Boolean contentAvailableTest = RC_OpportunityContentSearchExtension.contentAvailableCheck();
     	
     	/*
     		Test to ensure RC_Keywords__c is holding the Opportunity.Name
@@ -236,7 +217,7 @@ private class RC_OpportunityContentSearchExt_test {
         User uNegative = new User(Alias = 'standtf', Email='unegative@mailinator.com',
 				EmailEncodingKey='UTF-8', LastName='Test', LanguageLocaleKey='en_US',
 				LocaleSidKey='en_US', ProfileId = p.Id,
-        		TimeZoneSidKey='America/Chicago', UserName='unegative@test.com',
+        		TimeZoneSidKey='America/Chicago', UserName='unegative@relevantcontent.testuser',
         		UserPermissionsSFContentUser = false);
         // Instantiate the controller as the negative test user and test 
     	System.runAs(uNegative) {
@@ -260,7 +241,7 @@ private class RC_OpportunityContentSearchExt_test {
         User uPositive = new User(Alias = 'standtp', Email='upositive@mailinator.com',
 				EmailEncodingKey='UTF-8', LastName='Test', LanguageLocaleKey='en_US',
 				LocaleSidKey='en_US', ProfileId = p.Id,
-        		TimeZoneSidKey='America/Chicago', UserName='upositive@test.com',
+        		TimeZoneSidKey='America/Chicago', UserName='upositive@relevantcontent.testuser',
         		UserPermissionsSFContentUser = true);
         // Instantiate the controller as the positive test user and test 
         //  Only test if Content is enabled for the Org
@@ -275,5 +256,81 @@ private class RC_OpportunityContentSearchExt_test {
 				System.assertequals('Content',controllerExtension.contentType);
 			}
         }
+        
+    }
+    
+    // Test the postFileToFeed webservice
+    //	Reading from OpportunityFeed requires seeAllData = true
+    @isTest(seeAllData = true)
+    static void RC_FeedPostTestMethod() {
+        // Create a test opportunity which will contain the RC_Keywords__c formula field
+        Opportunity testOpportunity = new Opportunity(Name='Test Opportunity',CloseDate=Date.today()+365,StageName='Prospecting');
+        insert testOpportunity;
+        // Query the test opportunity to get the calculated value of the RC_Keywords__c formula field
+		testOpportunity = [SELECT ID, Name, RC_Keywords__c from Opportunity WHERE ID = :testOpportunity.id];
+		// Ensure the Keyword__c includes 'Test' (from the Opportunity.Name)
+        System.assert(testOpportunity.RC_Keywords__c.contains('Test'));
+        
+        // Create a File for testing attachment
+        //	This content contains the word 'Test' and should match the RC_Keywords__c which includes the opportunity Title of 'Test Opportunity'
+        Integer numTestContent = 3;
+        List<ContentVersion> testContentPos = CreateContent('Test Content ',numTestContent,'H');
+        for(ContentVersion thisContentPos: testContentPos) {
+			thisContentPos.Description = 'Test';
+        }
+        insert testContentPos;
+
+       	// Since SOSL queries return an empty set, force the addition of the first batch of test data
+		//  to the SOSL results
+		Map<Id, ContentVersion> searchById = new Map<Id, Contentversion>([SELECT Id FROM ContentVersion WHERE Description='Test']);
+		List<Id> searchResults = new List<id>(searchById.keySet());
+		Test.setFixedSearchResults(searchResults);
+		
+        // Set Visualforce page
+        PageReference page = new PageReference('RC_RelevantContentOpportunity');
+        Test.setCurrentPage(page); 
+
+		// Ensure CONTENT_ONLY is set to false for tests
+		RC_OpportunityContentSearchExtension.CONTENT_ONLY = false;
+        
+        // Set the standard controller and extension
+		ApexPages.StandardController controller = new ApexPages.StandardController(testOpportunity);
+		RC_OpportunityContentSearchExtension controllerExtension = new RC_OpportunityContentSearchExtension(controller);
+        
+		/*
+			Test the postFileToFeed remote static action
+		*/
+		// Test adding content with a comment
+		String testComment = 'This is a test comment';
+		// Call the postFileToFeed remote method and ensure it returns true
+   	    Boolean postResult = RC_OpportunityContentSearchExtension.postFileToFeed(testContentPos[0].Id,testOpportunity.Id,testComment);
+        System.assertEquals(true,postResult);
+        // Query the inserted record (there will only be one feed item at this point in this test data)
+        OpportunityFeed[] testFeedItems = [Select Id,RelatedRecordId,Type,Body,ParentId From OpportunityFeed WHERE ParentId = :testOpportunity.Id ORDER BY CreatedDate DESC LIMIT 1];
+       	// Validate FeedItem was added
+       	System.assertEquals(testContentPos[0].Id,testFeedItems[0].RelatedRecordId);
+       	System.assertEquals(testOpportunity.Id,testFeedItems[0].ParentId);
+		System.assertEquals(testComment,testFeedItems[0].Body);
+       	System.assertEquals('ContentPost',testFeedItems[0].Type);
+
+		// Test adding content without a comment
+		testComment = null;
+		// Call the postFileToFeed remote method and ensure it returns true
+   	    postResult = RC_OpportunityContentSearchExtension.postFileToFeed(testContentPos[1].Id,testOpportunity.Id,testComment);
+        System.assertEquals(true,postResult);
+        // Query the inserted record (there will only be one feed item at this point in this test data)
+        testFeedItems = [Select Id,RelatedRecordId,Type,Body,ParentId From OpportunityFeed WHERE ParentId = :testOpportunity.Id ORDER BY CreatedDate DESC LIMIT 1];
+       	// Validate FeedItem was added
+       	System.assertEquals(testContentPos[1].Id,testFeedItems[0].RelatedRecordId);
+       	System.assertEquals(testOpportunity.Id,testFeedItems[0].ParentId);
+		System.assertEquals(testComment,testFeedItems[0].Body);
+       	System.assertEquals('ContentPost',testFeedItems[0].Type);
+
+		// Test adding content with an invalid Content ID
+		testComment = 'test';
+		// Call the postFileToFeed remote method and ensure it returns true
+		postResult = RC_OpportunityContentSearchExtension.postFileToFeed('068F00000000000',testOpportunity.Id,testComment);
+		// Ensure function returns false
+        System.assertEquals(false,postResult);
     }
 }

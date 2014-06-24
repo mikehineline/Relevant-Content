@@ -29,7 +29,7 @@
     OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED 
     OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-public with sharing class RC_OpportunityContentSearchExtension {
+global with sharing class RC_OpportunityContentSearchExtension {
 	// Preference flag to return only Content (true) or Content and Files (false)
 	public static Boolean CONTENT_ONLY = false;
 
@@ -74,8 +74,6 @@ public with sharing class RC_OpportunityContentSearchExtension {
         MAX_RESULTS = 100;
         // Default number of results returned per page
         RESULTS_PER_PAGE = 10;
-        // Return Content and Files (false) as opposed to only Content (true)
-//        CONTENT_ONLY = true;
 
 		/*
 			Initialize variables
@@ -154,6 +152,10 @@ public with sharing class RC_OpportunityContentSearchExtension {
 		- Update this.numPages with number of pages of content
 	*/
     public void performSearch(String searchString) {
+    	// Ensure we don't receive a null string
+		if (searchString == null) {
+			return;	
+		}
 		/*
 			Generate a list of keywords for the from the input searchString
 			Two key variables:
@@ -214,6 +216,7 @@ public with sharing class RC_OpportunityContentSearchExtension {
 		if (keywordSearchString.length() > 2) {
 			String contentQueryString = 'FIND :keywordSearchString IN ALL FIELDS';
 			contentQueryString += ' RETURNING ContentVersion (Id, Title, FileType, PathOnClient, ContentSize, ContentDocumentId, ContentModifiedDate';
+			contentQueryString += ', Description, TagCsv, PositiveRatingCount, NegativeRatingCount';
 			contentQueryString += ' WHERE IsLatest = TRUE AND IsDeleted = FALSE';
 	        contentQueryString += queryLimitString;
 	        contentQueryString += ')';
@@ -316,7 +319,9 @@ public with sharing class RC_OpportunityContentSearchExtension {
     	//	the lower case version of the FileType will be returned
 		String outputFileTypeString = inputFileTypeString.toLowerCase();
 		// Convert the inputFilename string to lower case
-		inputFilename = inputFilename.toLowerCase();
+		if (inputFilename != null) {
+			inputFilename = inputFilename.toLowerCase();
+		}
 		
 		// Set the input/output file type string mappings
 		//	Identical FileType to known file extensions (e.g. bmp => bmp) are not explicitly mapped
@@ -428,5 +433,36 @@ public with sharing class RC_OpportunityContentSearchExtension {
 		// Return the content availability
 		return contentIsAvailable;
 	}
-    
+	
+	
+	/*
+		emailTask - Remoting method to post a piece of Content to an Opportunity Chatter feed
+			with optional comments
+		Inputs:
+		
+		
+		Returns:
+		- Boolean success - true if the post addition was successful / false if there is an issue posting
+	*/
+	@RemoteAction
+	global static Boolean postFileToFeed(ID contentId, ID parentRecordId, String commentBody) {
+		// Build the Feed post of type ContentPost referencing the existing Content
+		FeedItem contentPost = new FeedItem();
+		contentPost.ParentId = parentRecordId;
+		contentPost.Type = 'ContentPost';
+		contentPost.RelatedRecordId = contentId;
+		if (commentBody != null && commentBody != '') {
+			contentPost.Body = commentBody;
+		}
+
+		// Attempt to create the Feed post
+		try {
+			insert contentPost;
+		} catch (DmlException e) {
+			System.debug(LoggingLevel.ERROR, e.getMessage());
+			return false;
+		}
+
+		return true;
+	}	
 }
