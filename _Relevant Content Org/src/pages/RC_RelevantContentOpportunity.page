@@ -171,7 +171,7 @@
             
             <!-- Pagination -->
             <apex:actionFunction name="paginateFunction" action="{!changePage}" reRender="contentListPanel">
-                <apex:param name="srchStrng" value="" assignTo="{!currentPage}" />
+                <apex:param name="inputPage" value="" assignTo="{!currentPage}" />
             </apex:actionFunction>
             <ul class="pagination pagination-sm">
                 <li class="{!IF((currentPage == 1),'disabled','')}"><a href="javascript:void(0);" onClick="paginateFunction({!currentPage - 1}); return false;">&laquo;</a></li>    <apex:repeat value="{!resultPages}" var="pageNum" id="pagination">
